@@ -465,6 +465,125 @@ public class BlockwiseClientSideTest {
 	}
 
 	/**
+	 * Verifies that a block1 transfer with a 4.13 code at begining with a smaller szx option is retried with a smaller blocksize.
+	 * 
+	 * @throws Exception if the test fails.
+	 */
+	@Test
+	public void testBlockwisePUTWithBegining413AndSmallerSZX() throws Exception {
+
+		System.out.println("Blockwise PUT fails for excessive body size");
+		reqtPayload = generateRandomPayload(128 + 10);
+		respPayload = generateRandomPayload(30);
+		String path = "test";
+
+		Request request = createRequest(PUT, path, server);
+		request.setPayload(reqtPayload);
+		client.sendRequest(request);
+
+		server.expectRequest(CON, PUT, path).storeBoth("A").block1(0, true, 128).size1(reqtPayload.length()).payload(reqtPayload, 0, 128).go();
+		server.sendResponse(ACK, REQUEST_ENTITY_TOO_LARGE).loadBoth("A").block1(0, false, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("B").block1(0, true, 64).size1(reqtPayload.length()).payload(reqtPayload, 0, 64).go();
+		server.sendResponse(ACK, CONTINUE).loadBoth("B").block1(0, true, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("C").block1(1, true, 64).payload(reqtPayload, 64, 128).go();
+		server.sendResponse(ACK, CONTINUE).loadBoth("C").block1(1, true, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("D").block1(2, false, 64).payload(reqtPayload, 128, 138).go();
+		server.sendResponse(ACK, CHANGED).loadBoth("D").block1(2, false, 64).payload(respPayload).go();
+
+		Response response = request.waitForResponse(RESPONSE_TIMEOUT_IN_MS);
+		assertResponseContainsExpectedPayload(response, CHANGED, respPayload);
+	}
+
+	/**
+	 * Verifies that a block1 transfer with a 4.13 code in the middle with a smaller szx option is retried with a smaller block size.
+	 * 
+	 * @throws Exception if the test fails.
+	 */
+	@Test
+	public void testBlockwisePUTWithMiddle413AndSmallerSZX() throws Exception {
+
+		System.out.println("Blockwise PUT fails for excessive body size");
+		reqtPayload = generateRandomPayload(260);
+		respPayload = generateRandomPayload(30);
+		String path = "test";
+
+		Request request = createRequest(PUT, path, server);
+		request.setPayload(reqtPayload);
+		client.sendRequest(request);
+
+		server.expectRequest(CON, PUT, path).storeBoth("A").block1(0, true, 128).size1(reqtPayload.length()).payload(reqtPayload, 0, 128).go();
+		server.sendResponse(ACK, CONTINUE).loadBoth("A").block1(0, false, 128).go();
+		server.expectRequest(CON, PUT, path).storeBoth("B").block1(1, true, 128).payload(reqtPayload, 128, 256).go();
+		server.sendResponse(ACK, REQUEST_ENTITY_TOO_LARGE).loadBoth("B").block1(1, false, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("C").block1(2, true, 64).payload(reqtPayload, 128, 192).go();
+		server.sendResponse(ACK, CONTINUE).loadBoth("C").block1(2, true, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("D").block1(3, true, 64).payload(reqtPayload, 192, 256).go();
+		server.sendResponse(ACK, CONTINUE).loadBoth("D").block1(3, true, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("E").block1(4, false, 64).payload(reqtPayload, 256, 260).go();
+		server.sendResponse(ACK, CHANGED).loadBoth("E").block1(4, false, 64).payload(respPayload).go();
+
+		Response response = request.waitForResponse(RESPONSE_TIMEOUT_IN_MS);
+		assertResponseContainsExpectedPayload(response, CHANGED, respPayload);
+	}
+
+	/**
+	 * Verifies that a block1 transfer with a 4.13 code at the end with a smaller szx option is retried with a smaller block size.
+	 * 
+	 * @throws Exception if the test fails.
+	 */
+	@Test
+	public void testBlockwisePUTWithEnding413AndSmallerSZX() throws Exception {
+
+		System.out.println("Blockwise PUT fails for excessive body size");
+		reqtPayload = generateRandomPayload(250);
+		respPayload = generateRandomPayload(30);
+		String path = "test";
+
+		Request request = createRequest(PUT, path, server);
+		request.setPayload(reqtPayload);
+		client.sendRequest(request);
+
+		server.expectRequest(CON, PUT, path).storeBoth("A").block1(0, true, 128).size1(reqtPayload.length()).payload(reqtPayload, 0, 128).go();
+		server.sendResponse(ACK, CONTINUE).loadBoth("A").block1(0, false, 128).go();
+		server.expectRequest(CON, PUT, path).storeBoth("B").block1(1, false, 128).payload(reqtPayload, 128, 250).go();
+		server.sendResponse(ACK, REQUEST_ENTITY_TOO_LARGE).loadBoth("B").block1(1, false, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("C").block1(2, true, 64).payload(reqtPayload, 128, 192).go();
+		server.sendResponse(ACK, CONTINUE).loadBoth("C").block1(2, true, 64).go();
+		server.expectRequest(CON, PUT, path).storeBoth("D").block1(3, false, 64).payload(reqtPayload, 192, 250).go();
+		server.sendResponse(ACK, CHANGED).loadBoth("D").block1(3, false, 64).payload(respPayload).go();
+
+		Response response = request.waitForResponse(RESPONSE_TIMEOUT_IN_MS);
+		assertResponseContainsExpectedPayload(response, CHANGED, respPayload);
+	}
+	/**
+	 * Verifies that a block1 transfer with a 4.13 code with an equals szx option failed
+	 * 
+	 * @throws Exception if the test fails.
+	 */
+	@Test
+	public void testBlockwisePUTWith413AndEqualsSZX() throws Exception {
+
+		System.out.println("Blockwise PUT fails for excessive body size");
+		reqtPayload = generateRandomPayload(128 + 10);
+		respPayload = generateRandomPayload(30);
+		String path = "test";
+
+		Request request = createRequest(PUT, path, server);
+		request.setPayload(reqtPayload);
+		client.sendRequest(request);
+
+		server.expectRequest(CON, PUT, path).storeBoth("A").block1(0, true, 128).size1(reqtPayload.length()).payload(reqtPayload, 0, 128).go();
+		server.sendResponse(ACK, REQUEST_ENTITY_TOO_LARGE).loadBoth("A").block1(0, false, 128).go();
+		
+		Response response = request.waitForResponse(ERROR_TIMEOUT_IN_MS);
+		assertThat(response, is(notNullValue()));
+		assertThat(response.getPayloadSize(), is(0));
+		assertThat(response.getCode(), is(REQUEST_ENTITY_TOO_LARGE));
+		assertThat(response.getToken(), is(request.getToken()));
+		assertThat(response.getMID(), is(request.getMID()));
+	}
+
+	/**
 	 * Verifies that a block1 transfer fails with a 4.08 code if not all blocks are uploaded.
 	 * 
 	 * @throws Exception if the test fails.

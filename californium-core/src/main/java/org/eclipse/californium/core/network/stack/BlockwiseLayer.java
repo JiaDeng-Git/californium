@@ -336,7 +336,7 @@ public class BlockwiseLayer extends AbstractLayer {
 				status.cancelRequest();
 				clearBlock1Status(key, status);
 			}
-			status = getOutboundBlock1Status(key, exchange, request);
+			status = getOutboundBlock1Status(key, exchange, request, preferredBlockSize);
 
 			final Request block = status.getNextRequestBlock();
 			block.setDestinationContext(request.getDestinationContext());
@@ -630,6 +630,12 @@ public class BlockwiseLayer extends AbstractLayer {
 				case REQUEST_ENTITY_INCOMPLETE: // 4.08
 					// we seem to have uploaded blocks not in expected order
 				case REQUEST_ENTITY_TOO_LARGE: // 4.13
+					if (response.getOptions().hasBlock1() && exchange.getCurrentRequest().getOptions().hasBlock1()
+							&& response.getOptions().getBlock1().getSzx() < exchange.getCurrentRequest().getOptions()
+									.getBlock1().getSzx()) {
+						handleBlock1Response(exchange, response);
+						return;
+					}
 					// server is not able to process the payload we included
 					KeyUri key = getKey(exchange, exchange.getCurrentRequest());
 					Block1BlockwiseStatus status = getBlock1Status(key);
@@ -731,10 +737,14 @@ public class BlockwiseLayer extends AbstractLayer {
 
 				clearBlock1Status(key, status);
 
+			} else if (response.getCode() == ResponseCode.REQUEST_ENTITY_TOO_LARGE
+					&& block1.getSize() < status.getCurrentSize()) {
+
+				SendBlockAgain(exchange, response, key, status);
+
 			} else if (!status.isComplete()) {
 
 				// this means that our last request's M-bit was set
-
 				if (block1.isM()) {
 					if (response.getCode() == ResponseCode.CONTINUE) {
 						// server wants us to send the remaining blocks before returning
@@ -778,7 +788,8 @@ public class BlockwiseLayer extends AbstractLayer {
 		}
 	}
 
-	private void sendNextBlock(final Exchange exchange, final Response response, final KeyUri key, final Block1BlockwiseStatus status) {
+	private void sendNextBlock(final Exchange exchange, final Response response, final KeyUri key,
+			final Block1BlockwiseStatus status) {
 
 		BlockOption block1 = response.getOptions().getBlock1();
 		int currentSize = status.getCurrentSize();
@@ -792,10 +803,22 @@ public class BlockwiseLayer extends AbstractLayer {
 			newSzx = status.getCurrentSzx();
 		}
 		int nextNum = status.getCurrentNum() + currentSize / newSize;
-		LOGGER.debug("sending next Block1 num={}", nextNum);
+		sendBlock(exchange, response, key, status, nextNum, newSzx);
+	}
+
+	private void SendBlockAgain(final Exchange exchange, final Response response, final KeyUri key,
+			final Block1BlockwiseStatus status) {
+		BlockOption block1 = response.getOptions().getBlock1();
+		int nextNum = status.getCurrentNum() * status.getCurrentSize() / block1.getSize();
+		sendBlock(exchange, response, key, status, nextNum, block1.getSzx());
+	}
+
+	private void sendBlock(final Exchange exchange, final Response response, final KeyUri key,
+			final Block1BlockwiseStatus status, int num, int szx) {
 		Request nextBlock = null;
+		LOGGER.debug("sending Block1 num={}", num);
 		try {
-			nextBlock = status.getNextRequestBlock(nextNum, newSzx);
+			nextBlock = status.getNextRequestBlock(num, szx);
 			// we use the same token to ease traceability
 			nextBlock.setToken(response.getToken());
 			nextBlock.setDestinationContext(status.getFollowUpEndpointContext(response.getSourceContext()));
@@ -1057,12 +1080,12 @@ public class BlockwiseLayer extends AbstractLayer {
 		}
 	}
 
-	private Block1BlockwiseStatus getOutboundBlock1Status(final KeyUri key, final Exchange exchange, final Request request) {
+	private Block1BlockwiseStatus getOutboundBlock1Status(final KeyUri key, final Exchange exchange, final Request request, int blocksize) {
 
 		synchronized (block1Transfers) {
 			Block1BlockwiseStatus status = block1Transfers.get(key);
 			if (status == null) {
-				status = Block1BlockwiseStatus.forOutboundRequest(exchange, request, preferredBlockSize);
+				status = Block1BlockwiseStatus.forOutboundRequest(exchange, request, blocksize);
 				block1Transfers.put(key, status);
 				enableStatus = true;
 				LOGGER.debug("created tracker for outbound block1 transfer {}, transfers in progress: {}", status,
